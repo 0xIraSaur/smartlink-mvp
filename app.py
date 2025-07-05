@@ -19,6 +19,17 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         ''')
+        # Table for click logs
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clicks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                ip TEXT,
+                user_agent TEXT
+            )
+        ''')
+
         conn.commit()
 
 # 🔐 Generate a random slug like "a1B2c3"
@@ -66,7 +77,22 @@ def redirect_to_original(slug):
         result = cursor.fetchone()
 
         if result:
-            return redirect(result[0])
+            target_url = result[0]
+
+            # Extract request data
+            timestamp = datetime.utcnow().isoformat()
+            ip = request.remote_addr or "unknown"
+            user_agent = request.headers.get('User-Agent', 'unknown')
+
+            # Insert into clicks table
+            cursor.execute('''
+                INSERT INTO clicks (slug, timestamp, ip, user_agent)
+                VALUES (?, ?, ?, ?)
+            ''', (slug, timestamp, ip, user_agent))
+
+            conn.commit()
+
+            return redirect(target_url)
         else:
             return "Invalid or expired link", 404
 
