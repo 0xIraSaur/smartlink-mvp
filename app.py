@@ -1,28 +1,42 @@
 from flask import Flask, request, redirect, render_template
 import random
 import string
+import sqlite3
+from datetime import datetime
 
 app = Flask(__name__)
+DB_FILE = 'links.db'  # SQLite file name
 
-# Store links temporarily in memory (will replace with SQLite later)
-link_storage = {}
+# 🟢 Create the links table if it doesn't exist
+def init_db():
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                final_url TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        conn.commit()
 
-# Helper function to generate a short random slug
+# 🔐 Generate a random slug like "a1B2c3"
 def generate_slug(length=6):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-# 🟢 Route 1: Show the form to input video link + timestamp
+# 🟢 Route 1: Show form
 @app.route('/', methods=['GET'])
 def show_form():
     return render_template('form.html')
 
-# 🟢 Route 2: Handle form submission
+# 🟢 Route 2: Handle form submission and save to DB
 @app.route('/create', methods=['POST'])
 def create_link():
     original_url = request.form.get('url')
     timestamp = request.form.get('timestamp')
 
-    # 🧠 Append timestamp to URL if provided
+    # Append timestamp if given
     if timestamp:
         if "?" in original_url:
             final_url = f"{original_url}&t={timestamp}"
@@ -31,24 +45,32 @@ def create_link():
     else:
         final_url = original_url
 
-    # 🔐 Generate a short slug like "a1b2C3"
     slug = generate_slug()
+    created_at = datetime.utcnow().isoformat()
 
-    # 💾 Store the final URL against the slug in memory
-    link_storage[slug] = final_url
+    # Save to SQLite
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO links (slug, final_url, created_at) VALUES (?, ?, ?)',
+                       (slug, final_url, created_at))
+        conn.commit()
 
     return f"Short link created: <a href='/go/{slug}'>/go/{slug}</a>"
 
-# 🟢 Route 3: Redirect when someone clicks the smart link
+# 🟢 Route 3: Redirect to actual URL
 @app.route('/go/<slug>', methods=['GET'])
 def redirect_to_original(slug):
-    target_url = link_storage.get(slug)
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT final_url FROM links WHERE slug = ?', (slug,))
+        result = cursor.fetchone()
 
-    if target_url:
-        return redirect(target_url)
-    else:
-        return "Invalid or expired link", 404
+        if result:
+            return redirect(result[0])
+        else:
+            return "Invalid or expired link", 404
 
-# ✅ Run the Flask app
+# ✅ Initialize DB on first run
 if __name__ == '__main__':
+    init_db()
     app.run(debug=True)

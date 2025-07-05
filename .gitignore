@@ -1,0 +1,9 @@
+# Ignore local SQLite database
+links.db
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore environment config if you add it later
+.env
