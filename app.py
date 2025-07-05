@@ -95,6 +95,42 @@ def redirect_to_original(slug):
             return redirect(target_url)
         else:
             return "Invalid or expired link", 404
+        
+@app.route('/stats/<slug>', methods=['GET'])
+def stats(slug):
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+
+        # Check if the slug exists in the links table
+        cursor.execute('SELECT final_url FROM links WHERE slug = ?', (slug,))
+        link_result = cursor.fetchone()
+
+        if not link_result:
+            return "Link not found", 404
+
+        # Get click logs for this slug
+        cursor.execute('''
+            SELECT timestamp, ip, user_agent
+            FROM clicks
+            WHERE slug = ?
+            ORDER BY timestamp DESC
+            LIMIT 50
+        ''', (slug,))
+        clicks = cursor.fetchall()
+
+        # Render HTML manually (or we can use templates later)
+        response = f"<h2>Stats for: /go/{slug}</h2>"
+        response += f"<p><strong>Target URL:</strong> {link_result[0]}</p>"
+        response += f"<p><strong>Total Clicks:</strong> {len(clicks)}</p><hr>"
+
+        response += "<h3>Recent Clicks:</h3><ul>"
+        for c in clicks:
+            ts, ip, ua = c
+            response += f"<li>{ts} - IP: {ip} - UA: {ua}</li>"
+        response += "</ul>"
+
+        return response
+
 
 # ✅ Initialize DB on first run
 if __name__ == '__main__':
